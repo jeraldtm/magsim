@@ -13,7 +13,7 @@ class SimpleSolver():
         
         
 class RKSolver():
-    def __init__(self, f, y0, ydot0, t0 = 0., h=1, **kwargs):
+    def __init__(self, f, y0, ydot0 = 0., t0 = 0., h=1, **kwargs):
         self.vars = [[y0, ydot0, t0]]
         self.f = f
         self.h = h
@@ -30,7 +30,7 @@ class RKSolver():
         self.vars.append([y_n, ydot_n, t_n])
 
 class RK45Solver():
-	def __init__(self, f, y0, ydot0, t0 = 0., h=1, hlim = [0.1, 2.], eps = 0.1, **kwargs):
+	def __init__(self, f, y0, ydot0 = 0., t0 = 0., h=1, hlim = [0.1, 2.], eps = 0.1, **kwargs):
 	    self.vars = [[y0, ydot0, t0, h, 0]]
 	    self.f = f
 	    self.h = h

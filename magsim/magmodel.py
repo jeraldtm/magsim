@@ -3,40 +3,6 @@ import scipy as sp
 import xarray as xr
 from .solvers import RKSolver, SimpleSolver, RK45Solver
 
-def getModel(*args, **kwargs):
-	H, Ms, alpha, gamma, ad, fl, sigma, freq, Aex, ad_u, fl_u = args
-	def Precession(y, ydot, **kwargs):
-		demag = Ms*np.array([0., 0., y[2]]) #Demag for thin films = mz*Ms
-		return -gamma * np.cross(y, H-demag)
-
-	def Gilbert(y, ydot, **kwargs):
-		demag = Ms*np.array([0., 0., y[2]]) #Demag for thin films = mz*Ms
-		return -gamma * np.cross(y, H-demag) + alpha* np.cross(y, ydot)
-
-	def LLGS(y, ydot, t, **kwargs):
-		j = np.sin(2*np.pi*freq * t)
-		demag = Ms*np.array([0., 0., y[2]]) #Demag for thin films = mz*Ms
-		return -gamma * np.cross(y, H-demag) + alpha/np.linalg.norm(y) * np.cross(y, ydot) + j/np.linalg.norm(y)*ad*np.cross(y, np.cross(y, sigma)) + j*fl*np.cross(y, sigma)
-	
-	def LLGS_alt(y, ydot, t, **kwargs):
-		j = np.sin(2*np.pi*freq * t)
-		demag = Ms*np.array([0., 0., y[2]]) #Demag for thin films = mz*Ms
-		return -gamma/(1+alpha**2) * (np.cross(y, H-demag) + alpha/np.linalg.norm(y) * np.cross(y, np.cross(y, H-demag))) + j/np.linalg.norm(y)*ad*np.cross(y, np.cross(y, sigma)) + j*fl*np.cross(y, sigma)
-
-	def LLGS_exchange(y, ydot, t, **kwargs):
-			j = np.sin(2*np.pi*freq * t)
-			demag_l = Ms*np.array([0., 0., y[2]]) #Demag for thin films = mz*Ms
-			demag_u = Ms*np.array([0., 0., y[5]])
-			Heff_l = H - demag_l + Aex* y[3:] #Exchange field from upper layer
-			Heff_u = H - demag_u + Aex* y[:3] #Exchange field from lower layer
-			m_l = -gamma/(1+alpha**2) * (np.cross(y, Heff_l) + alpha/np.linalg.norm(y) * np.cross(y, np.cross(y, Heff_l))) + j/np.linalg.norm(y)*ad*np.cross(y, np.cross(y, sigma)) + j*fl*np.cross(y, sigma)
-			m_u = -gamma/(1+alpha**2) * (np.cross(y, Heff_u) + alpha/np.linalg.norm(y) * np.cross(y, np.cross(y, Heff_u))) + j/np.linalg.norm(y)*ad_u*np.cross(y, np.cross(y, sigma)) + j*fl_u*np.cross(y, sigma)
-			m = m_l.tolist() + m_u.tolist()
-			return m
-
-
-	return Precession, Gilbert, LLGS, LLGS_alt
-
 class MagModel():
 	"""
 	Class to contain magnet dynamics by solving the LLGS equations
@@ -59,10 +25,10 @@ class MagModel():
 	ds: Xarray dataset
 	"""
 
-	def __init__(self, H, Ms, alpha, gamma, ad, fl, sigma, freq, Aex, ad_u, fl_u, solver = RKSolver, **kwargs):
+	def __init__(self, H, Ms, alpha, gamma, ad, fl, sigma, freq, Aex=0., ad_u=0., fl_u=0., n = 2, solver = RKSolver, **kwargs):
 		self.H, self.Ms, self.alpha, self.gamma = H, Ms, alpha, gamma
 		self.ad, self.fl, self.sigma, self.freq = ad, fl, sigma, freq
-		self.Aex, self.ad_u, self.fl_u = Aex, ad_u, fl_u
+		self.Aex, self.ad_u, self.fl_u, self.n = Aex, ad_u, fl_u, n
 		self.solver = solver
 
 	def setModel(self, model, **kwargs):
@@ -87,16 +53,78 @@ class MagModel():
 		freq: float
 		    current injection frequency for LLGS model
 		"""
-		P, G, L, L_a = getModel(self.H, self.Ms, self.alpha, self.gamma, 
-			self.ad, self.fl, self.sigma, self.freq, self.Aex, self.ad_u, self.fl_u, **kwargs)
+
+		def Precession(y, **kwargs):
+			demag = self.Ms*np.array([0., 0., y[2]]) #Demag for thin films = mz*Ms
+			return -self.gamma * np.cross(y, self.H-demag)
+
+		def Gilbert(y, **kwargs):
+			Heff = self.H - self.Ms*np.array([0., 0., y[2]]) #Demag for thin films = mz*Ms
+			ydot = -self.gamma * np.cross(y, Heff) 
+			return -self.gamma * np.cross(y, Heff) + self.alpha* np.cross(y, ydot)
+
+		def LLGS(y, t, **kwargs):
+			j = np.sin(2*np.pi*self.freq * t)
+			Heff = self.H - self.Ms*np.array([0., 0., y[2]]) #Demag for thin films = mz*Ms
+			ydot = -self.gamma * np.cross(y, Heff) 
+			return -self.gamma * np.cross(y, Heff) + self.alpha/np.linalg.norm(y) * np.cross(y, ydot)\
+			 + j/np.linalg.norm(y)*self.ad*np.cross(y, np.cross(y, self.sigma)) + j*self.fl*np.cross(y, self.sigma)
+
+		def LLGS_alt(y, t, **kwargs):
+			j = np.sin(2*np.pi*self.freq * t)
+			Heff = self.H - self.Ms*np.array([0., 0., y[2]]) #Demag for thin films = mz*Ms
+			return -self.gamma/(1+self.alpha**2) * (np.cross(y, Heff) + self.alpha/np.linalg.norm(y) * np.cross(y, np.cross(y, Heff)))\
+			 + j/np.linalg.norm(y)*self.ad*np.cross(y, np.cross(y, self.sigma)) + j*self.fl*np.cross(y, self.sigma)
+
+		def LLGS_ex(y, t, **kwargs):
+			ys, Heffs, ms = [], [], []
+			j = np.sin(2*np.pi*self.freq * t)
+			for i in range(self.n):
+				ys.append(y[3*i:3*(i+1)])
+
+			for i in range(self.n):
+				if i == 0:
+					Heffs.append(self.H - self.Ms*np.array([0., 0., ys[0][2]]) + self.Aex * np.array(ys[i+1]))
+				if i == (self.n-1):
+					Heffs.append(self.H - self.Ms*np.array([0., 0., ys[i][2]]) + self.Aex * np.array(ys[i-1]))
+				if i != 0 and i != (self.n-1):
+					Heffs.append(self.H - self.Ms*np.array([0., 0., ys[i][2]]) + self.Aex * (np.array(ys[i-1]) + np.array(ys[i+1])))
+
+			for i in range(self.n):
+				if i == 0:
+					ms.append(-self.gamma/(1+self.alpha**2) * (np.cross(ys[0], Heffs[0]) + self.alpha/np.linalg.norm(ys[0])\
+					 * np.cross(ys[0], np.cross(ys[0], Heffs[0]))) + j/np.linalg.norm(ys[0])*self.ad*np.cross(ys[0], np.cross(ys[0], self.sigma))\
+					  + j*self.fl*np.cross(ys[0], self.sigma))
+				
+				if i != 0:
+					ms.append(-self.gamma/(1+self.alpha**2) * (np.cross(ys[i], Heffs[i]) + self.alpha/np.linalg.norm(ys[i])\
+					 * np.cross(ys[i], np.cross(ys[i], Heffs[i]))) + j/np.linalg.norm(ys[i])*self.ad_u*np.cross(ys[i], np.cross(ys[i], self.sigma))\
+					  + j*self.fl_u*np.cross(ys[i], self.sigma))
+				
+			m = []
+			for i in range(self.n):
+				m += ms[i].tolist()
+			
+			return np.array(m)
+
+		self.model_name = model
 		if model == 'Precession':
-		    self.model = P
+			self.model = Precession
+			return None
 		if model == 'Gilbert':
-		    self.model = G
+			self.model = Gilbert
+			return None
 		if model == 'LLGS':
-		    self.model = L
+			self.model = LLGS
+			return None
 		if model == 'LLGS_alt':
-			self.model = L_a
+			self.model = LLGS_alt
+			return None
+		if model == 'LLGS_ex':
+			self.model = LLGS_ex
+			return None
+		else:
+			raise Exception('Invalid model name')
 
 	def runModel(self, steps, y0, **kwargs):
 		"""
@@ -114,31 +142,11 @@ class MagModel():
 		h: float
 		    timestep
 		"""
-		ydot0 = -self.gamma * np.cross(y0, self.H) 
-		a = self.solver(self.model, y0, ydot0, **kwargs)
+		self.a = self.solver(self.model, y0, **kwargs)
 		for i in range(int(steps)):
-		    a.step(**kwargs)
+		    self.a.step(**kwargs)
 		    
-		self.x = np.array([np.array(a.vars).transpose()[0][i][0] for i in range(len(np.array(a.vars).transpose()[0]))])
-		self.y = np.array([np.array(a.vars).transpose()[0][i][1] for i in range(len(np.array(a.vars).transpose()[0]))])
-		self.z = np.array([np.array(a.vars).transpose()[0][i][2] for i in range(len(np.array(a.vars).transpose()[0]))])
-		self.t = np.array(np.array(a.vars).transpose()[2]).astype('float64')
-		
-		self.phi = np.arctan2(self.y, self.x).astype('float64')
-		self.theta = np.arctan2(np.sqrt(self.x**2 + self.y**2), self.z)
-		self.AMR = np.sin(self.phi)**2*np.sin(self.theta)**2
-		self.AHE = np.cos(self.theta)
-		self.PHE = np.sin(self.theta)**2*np.sin(2*self.phi)
-
-		self.ds = xr.Dataset(data_vars={'mx': ('time', self.x), 'my': ('time', self.y), 
-		    'mz': ('time', self.z), 'phi':('time', self.phi), 'theta':('time', self.theta), 'AMR':('time', self.AMR), 
-		    'AHE':('time', self.AHE), 'PHE':('time', self.PHE)}, coords={'time': self.t})
-
-		if self.solver == RK45Solver:
-		    self.h = np.array(a.vars).transpose()[3].astype('float64')
-		    self.diff = np.array(a.vars).transpose()[4].astype('float64')
-		    self.ds = self.ds.assign(timesteps = xr.DataArray(self.h, dims = 'time'))
-		    self.ds = self.ds.assign(RK45diffs = xr.DataArray(self.diff, dims = 'time'))
+		self.storeOutput()
 
 	def minimize(self, y0, tol, max_steps, **kwargs):
 		"""
@@ -160,33 +168,49 @@ class MagModel():
 		h: float
 		    timestep
 		"""
-		ydot0 = -self.gamma * np.cross(y0, self.H) 
-		a = self.solver(self.model, y0, ydot0, **kwargs)
-		y_n = np.array(a.vars[-1][0])
-		diff = np.dot(abs(y0), np.ones(3))
+		self.a = self.solver(self.model, y0, **kwargs)
+		y_n = np.array(self.a.vars[-1][0])
+		diff = np.dot(abs(y0), np.ones(len(y0)))
 		step = 0
 
 		while diff > tol and step < max_steps:
-			a.step(**kwargs)
+			self.a.step(**kwargs)
 			step+=1
-			y_np1 = np.array(a.vars[-1][0])
-			diff = np.dot(abs(y_np1 - y_n), np.ones(3))
+			y_np1 = np.array(self.a.vars[-1][0])
+			diff = np.dot(abs(y_np1 - y_n), np.ones(len(y_n)))
 			y_n = y_np1
 
+		self.storeOutput()
+
+	def storeOutput(self, **kwargs):
+		a = self.a
 		self.x = np.array([np.array(a.vars).transpose()[0][i][0] for i in range(len(np.array(a.vars).transpose()[0]))])
 		self.y = np.array([np.array(a.vars).transpose()[0][i][1] for i in range(len(np.array(a.vars).transpose()[0]))])
 		self.z = np.array([np.array(a.vars).transpose()[0][i][2] for i in range(len(np.array(a.vars).transpose()[0]))])
 		self.t = np.array(np.array(a.vars).transpose()[2]).astype('float64')
-
+		
 		self.phi = np.arctan2(self.y, self.x).astype('float64')
 		self.theta = np.arctan2(np.sqrt(self.x**2 + self.y**2), self.z)
 		self.AMR = np.sin(self.phi)**2*np.sin(self.theta)**2
 		self.AHE = np.cos(self.theta)
 		self.PHE = np.sin(self.theta)**2*np.sin(2*self.phi)
-		
-		self.ds = xr.Dataset(data_vars={'mx': ('time', self.x), 'my': ('time', self.y), 
+
+		vars_dict = {'mx': ('time', self.x), 'my': ('time', self.y), 
 		    'mz': ('time', self.z), 'phi':('time', self.phi), 'theta':('time', self.theta), 'AMR':('time', self.AMR), 
-		    'AHE':('time', self.AHE), 'PHE':('time', self.PHE)}, coords={'time': self.t})
+		    'AHE':('time', self.AHE), 'PHE':('time', self.PHE)}
+
+		if self.model_name == 'LLGS_ex':
+			self.xs, self.ys, self.zs = [], [], []
+			for i in range(self.n):
+				x = np.array([np.array(a.vars).transpose()[0][pt][3*i] for pt in range(len(np.array(a.vars).transpose()[0]))])
+				y = np.array([np.array(a.vars).transpose()[0][pt][3*i + 1] for pt in range(len(np.array(a.vars).transpose()[0]))])
+				z = np.array([np.array(a.vars).transpose()[0][pt][3*i + 2] for pt in range(len(np.array(a.vars).transpose()[0]))])
+				self.xs.append(x)
+				self.ys.append(y)
+				self.zs.append(z)
+				vars_dict.update({f'x{i}' : ('time', x), f'y{i}' : ('time', y), f'z{i}' : ('time', z)})
+
+		self.ds = xr.Dataset(data_vars=vars_dict, coords={'time': self.t})
 
 		if self.solver == RK45Solver:
 		    self.h = np.array(a.vars).transpose()[3].astype('float64')
