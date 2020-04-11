@@ -25,9 +25,10 @@ class MagModel():
 	ds: Xarray dataset
 	"""
 
-	def __init__(self, H, Ms, alpha, gamma, ad, fl, sigma, freq, Aex=0., ad_u=0., fl_u=0., n = 2, solver = RKSolver, **kwargs):
-		self.H, self.Ms, self.alpha, self.gamma = H, Ms, alpha, gamma
-		self.ad, self.fl, self.sigma, self.freq = ad, fl, sigma, freq
+	def __init__(self, H, Ms, Ku = 0.0, alpha = 0.1, gamma = 1.76e11, ad=0.0, fl=0.0, sigma=np.array([0.,1.,0.])
+		, freq = 10., phase = 0.0, Aex=0., ad_u=0., fl_u=0., n = 2, solver = RKSolver, **kwargs):
+		self.H, self.Ms, self.alpha, self.gamma, self.Ku = H, Ms, alpha, gamma, Ku
+		self.ad, self.fl, self.sigma, self.freq, self.phase = ad, fl, sigma, freq, phase
 		self.Aex, self.ad_u, self.fl_u, self.n = Aex, ad_u, fl_u, n
 		self.solver = solver
 
@@ -55,40 +56,40 @@ class MagModel():
 		"""
 
 		def Precession(y, **kwargs):
-			demag = self.Ms*np.array([0., 0., y[2]]) #Demag for thin films = mz*Ms
+			Heff = H + np.array([0., 0., 2*self.Ku/self.Ms - self.Ms*y[2]]) #Demag for thin films = mz*Ms
 			return -self.gamma * np.cross(y, self.H-demag)
 
 		def Gilbert(y, **kwargs):
-			Heff = self.H - self.Ms*np.array([0., 0., y[2]]) #Demag for thin films = mz*Ms
+			Heff = self.H + np.array([0., 0., 2*self.Ku/self.Ms - self.Ms*y[2]]) #Demag for thin films = mz*Ms
 			ydot = -self.gamma * np.cross(y, Heff) 
 			return -self.gamma * np.cross(y, Heff) + self.alpha* np.cross(y, ydot)
 
 		def LLGS(y, t, **kwargs):
-			j = np.sin(2*np.pi*self.freq * t)
-			Heff = self.H - self.Ms*np.array([0., 0., y[2]]) #Demag for thin films = mz*Ms
-			ydot = -self.gamma * np.cross(y, Heff) 
+			j = np.sin((2*np.pi*self.freq * t) + self.phase)
+			Heff = self.H + np.array([0., 0., 2*self.Ku/self.Ms - self.Ms*y[2]])  #Demag for thin films = mz*Ms and PMA anistropy
+			ydot = -self.gamma * np.cross(y, Heff)
 			return -self.gamma * np.cross(y, Heff) + self.alpha/np.linalg.norm(y) * np.cross(y, ydot)\
 			 + j/np.linalg.norm(y)*self.ad*np.cross(y, np.cross(y, self.sigma)) + j*self.fl*np.cross(y, self.sigma)
 
 		def LLGS_alt(y, t, **kwargs):
-			j = np.sin(2*np.pi*self.freq * t)
-			Heff = self.H - self.Ms*np.array([0., 0., y[2]]) #Demag for thin films = mz*Ms
+			j = np.sin((2*np.pi*self.freq * t) + self.phase)
+			Heff = self.H + np.array([0., 0., 2*self.Ku/self.Ms - self.Ms*y[2]])  #Demag for thin films = mz*Ms
 			return -self.gamma/(1+self.alpha**2) * (np.cross(y, Heff) + self.alpha/np.linalg.norm(y) * np.cross(y, np.cross(y, Heff)))\
 			 + j/np.linalg.norm(y)*self.ad*np.cross(y, np.cross(y, self.sigma)) + j*self.fl*np.cross(y, self.sigma)
 
 		def LLGS_ex(y, t, **kwargs):
 			ys, Heffs, ms = [], [], []
-			j = np.sin(2*np.pi*self.freq * t)
+			j = np.sin((2*np.pi*self.freq * t) + self.phase)
 			for i in range(self.n):
 				ys.append(y[3*i:3*(i+1)])
 
 			for i in range(self.n):
 				if i == 0:
-					Heffs.append(self.H - self.Ms*np.array([0., 0., ys[0][2]]) + self.Aex * np.array(ys[i+1]))
+					Heffs.append(self.H + np.array([0., 0., 2*self.Ku/self.Ms - self.Ms*ys[0][2]]) + self.Aex * np.array(ys[i+1]))
 				if i == (self.n-1):
-					Heffs.append(self.H - self.Ms*np.array([0., 0., ys[i][2]]) + self.Aex * np.array(ys[i-1]))
+					Heffs.append(self.H + np.array([0., 0., 2*self.Ku/self.Ms - self.Ms*ys[i][2]]) + self.Aex * np.array(ys[i-1]))
 				if i != 0 and i != (self.n-1):
-					Heffs.append(self.H - self.Ms*np.array([0., 0., ys[i][2]]) + self.Aex * (np.array(ys[i-1]) + np.array(ys[i+1])))
+					Heffs.append(self.H + np.array([0., 0., 2*self.Ku/self.Ms - self.Ms*ys[i][2]]) + self.Aex * (np.array(ys[i-1]) + np.array(ys[i+1])))
 
 			for i in range(self.n):
 				if i == 0:
