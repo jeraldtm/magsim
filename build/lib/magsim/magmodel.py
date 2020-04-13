@@ -25,11 +25,11 @@ class MagModel():
 	ds: Xarray dataset
 	"""
 
-	def __init__(self, H, Ms, Ku = 0.0, alpha = 0.1, gamma = 1.76e11, ad=0.0, fl=0.0, sigma=np.array([0.,1.,0.])
-		, freq = 10., phase = 0.0, Aex=0., ad_u=0., fl_u=0., n = 2, solver = RKSolver, **kwargs):
+	def __init__(self, H, Ms, Ku = 0.0, alpha = 0.1, gamma = 1.76e11, ad=[0.0], fl=[0.0], sigma=np.array([0.,1.,0.])
+		, freq = 10., phase = 0.0, Aex=0., n = 2, solver = RKSolver, **kwargs):
 		self.H, self.Ms, self.alpha, self.gamma, self.Ku = H, Ms, alpha, gamma, Ku
 		self.ad, self.fl, self.sigma, self.freq, self.phase = ad, fl, sigma, freq, phase
-		self.Aex, self.ad_u, self.fl_u, self.n = Aex, ad_u, fl_u, n
+		self.Aex, self.n = Aex, n
 		self.solver = solver
 
 	def setModel(self, model, **kwargs):
@@ -69,13 +69,13 @@ class MagModel():
 			Heff = self.H + np.array([0., 0., 2*self.Ku/self.Ms - self.Ms*y[2]])  #Demag for thin films = mz*Ms and PMA anistropy
 			ydot = -self.gamma * np.cross(y, Heff)
 			return -self.gamma * np.cross(y, Heff) + self.alpha/np.linalg.norm(y) * np.cross(y, ydot)\
-			 + j/np.linalg.norm(y)*self.ad*np.cross(y, np.cross(y, self.sigma)) + j*self.fl*np.cross(y, self.sigma)
+			 + j/np.linalg.norm(y)*self.ad[0]*np.cross(y, np.cross(y, self.sigma)) + j*self.fl[0]*np.cross(y, self.sigma)
 
 		def LLGS_alt(y, t, **kwargs):
 			j = np.sin((2*np.pi*self.freq * t) + self.phase)
 			Heff = self.H + np.array([0., 0., 2*self.Ku/self.Ms - self.Ms*y[2]])  #Demag for thin films = mz*Ms
 			return -self.gamma/(1+self.alpha**2) * (np.cross(y, Heff) + self.alpha/np.linalg.norm(y) * np.cross(y, np.cross(y, Heff)))\
-			 + j/np.linalg.norm(y)*self.ad*np.cross(y, np.cross(y, self.sigma)) + j*self.fl*np.cross(y, self.sigma)
+			 + j/np.linalg.norm(y)*self.ad[0]*np.cross(y, np.cross(y, self.sigma)) + j*self.fl[0]*np.cross(y, self.sigma)
 
 		def LLGS_ex(y, t, **kwargs):
 			ys, Heffs, ms = [], [], []
@@ -94,13 +94,13 @@ class MagModel():
 			for i in range(self.n):
 				if i == 0:
 					ms.append(-self.gamma/(1+self.alpha**2) * (np.cross(ys[0], Heffs[0]) + self.alpha/np.linalg.norm(ys[0])\
-					 * np.cross(ys[0], np.cross(ys[0], Heffs[0]))) + j/np.linalg.norm(ys[0])*self.ad*np.cross(ys[0], np.cross(ys[0], self.sigma))\
-					  + j*self.fl*np.cross(ys[0], self.sigma))
+					 * np.cross(ys[0], np.cross(ys[0], Heffs[0]))) + j/np.linalg.norm(ys[0])*self.ad[0]*np.cross(ys[0], np.cross(ys[0], self.sigma))\
+					  + j*self.fl[0]*np.cross(ys[0], self.sigma))
 				
 				if i != 0:
 					ms.append(-self.gamma/(1+self.alpha**2) * (np.cross(ys[i], Heffs[i]) + self.alpha/np.linalg.norm(ys[i])\
-					 * np.cross(ys[i], np.cross(ys[i], Heffs[i]))) + j/np.linalg.norm(ys[i])*self.ad_u*np.cross(ys[i], np.cross(ys[i], self.sigma))\
-					  + j*self.fl_u*np.cross(ys[i], self.sigma))
+					 * np.cross(ys[i], np.cross(ys[i], Heffs[i]))) + j/np.linalg.norm(ys[i])*self.ad[i]*np.cross(ys[i], np.cross(ys[i], self.sigma))\
+					  + j*self.fl[i]*np.cross(ys[i], self.sigma))
 				
 			m = []
 			for i in range(self.n):
@@ -171,14 +171,14 @@ class MagModel():
 		"""
 		self.a = self.solver(self.model, y0, **kwargs)
 		y_n = np.array(self.a.vars[-1][0])
-		diff = np.dot(abs(y0), np.ones(len(y0)))
+		diff = np.dot(abs(y0[:3]), np.ones(len(y0[:3])))
 		step = 0
 
 		while diff > tol and step < max_steps:
 			self.a.step(**kwargs)
 			step+=1
 			y_np1 = np.array(self.a.vars[-1][0])
-			diff = np.dot(abs(y_np1 - y_n), np.ones(len(y_n)))
+			diff = np.dot(abs(y_np1[:3] - y_n[:3]), np.ones(len(y_n[:3])))
 			y_n = y_np1
 
 		self.storeOutput()
