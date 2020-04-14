@@ -85,7 +85,10 @@ class MagModel():
 
 			for i in range(self.n):
 				if i == 0:
-					Beffs.append(self.Bext + np.array([0., 0., (2*self.Ku/self.Ms - self.Ms)*ys[0][2]]) + self.Jex * self.Ms* np.array(ys[i+1]))
+					if self.n == 1:
+						Beffs.append(self.Bext + np.array([0., 0., (2*self.Ku/self.Ms - self.Ms)*ys[0][2]]))
+					else:
+						Beffs.append(self.Bext + np.array([0., 0., (2*self.Ku/self.Ms - self.Ms)*ys[0][2]]) + self.Jex * self.Ms* np.array(ys[i+1]))
 				if i == (self.n-1):
 					Beffs.append(self.Bext + np.array([0., 0., (2*self.Ku/self.Ms - self.Ms)*ys[i][2]]) + self.Jex * self.Ms* np.array(ys[i-1]))
 				if i != 0 and i != (self.n-1):
