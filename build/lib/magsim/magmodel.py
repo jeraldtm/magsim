@@ -25,11 +25,11 @@ class MagModel():
 	ds: Xarray dataset
 	"""
 
-	def __init__(self, H, Ms, Ku = 0.0, alpha = 0.1, gamma = 1.76e11, ad=[0.0], fl=[0.0], sigma=np.array([0.,1.,0.])
-		, freq = 10., phase = 0.0, Aex=0., n = 2, solver = RKSolver, **kwargs):
-		self.H, self.Ms, self.alpha, self.gamma, self.Ku = H, Ms, alpha, gamma, Ku
+	def __init__(self, Bext, Ms, Ku = 0.0, alpha = 0.1, gamma = 1.76e11, ad=[0.0], fl=[0.0], sigma=np.array([0.,1.,0.])
+		, freq = 10., phase = 0.0, Jex=0., n = 2, solver = RKSolver, **kwargs):
+		self.Bext, self.Ms, self.alpha, self.gamma, self.Ku = Bext, Ms, alpha, gamma, Ku
 		self.ad, self.fl, self.sigma, self.freq, self.phase = ad, fl, sigma, freq, phase
-		self.Aex, self.n = Aex, n
+		self.Jex, self.n = Jex, n
 		self.solver = solver
 
 	def setModel(self, model, **kwargs):
@@ -43,7 +43,7 @@ class MagModel():
 		    Gilbert damping parameter
 		gamma : float
 		    gyrromagnetic ratio
-		H: numpy array with 3 components
+		Bext: numpy array with 3 components
 		    external field, e.g. np.array([0., 0., 0.])
 		ad: float
 		    antidamping coefficient
@@ -56,51 +56,53 @@ class MagModel():
 		"""
 
 		def Precession(y, **kwargs):
-			Heff = H + np.array([0., 0., 2*self.Ku/self.Ms - self.Ms*y[2]]) #Demag for thin films = mz*Ms
-			return -self.gamma * np.cross(y, self.H-demag)
+			Beff = self.Bext + np.array([0., 0., (2*self.Ku/self.Ms - self.Ms)*y[2]]) #Demag for thin films = mz*Ms
+			return -self.gamma * np.cross(y, Beff)
 
 		def Gilbert(y, **kwargs):
-			Heff = self.H + np.array([0., 0., 2*self.Ku/self.Ms - self.Ms*y[2]]) #Demag for thin films = mz*Ms
-			ydot = -self.gamma * np.cross(y, Heff) 
-			return -self.gamma * np.cross(y, Heff) + self.alpha* np.cross(y, ydot)
+			Beff = self.Bext + np.array([0., 0., (2*self.Ku/self.Ms - self.Ms)*y[2]]) #Demag for thin films = mz*Ms
+			ydot = -self.gamma * np.cross(y, Beff) 
+			return -self.gamma * np.cross(y, Beff) + self.alpha* np.cross(y, ydot)
 
 		def LLGS(y, t, **kwargs):
-			j = np.sin((2*np.pi*self.freq * t) + self.phase)
-			Heff = self.H + np.array([0., 0., 2*self.Ku/self.Ms - self.Ms*y[2]])  #Demag for thin films = mz*Ms and PMA anistropy
-			ydot = -self.gamma * np.cross(y, Heff)
-			return -self.gamma * np.cross(y, Heff) + self.alpha/np.linalg.norm(y) * np.cross(y, ydot)\
-			 + j/np.linalg.norm(y)*self.ad[0]*np.cross(y, np.cross(y, self.sigma)) + j*self.fl[0]*np.cross(y, self.sigma)
+			I = np.sin((2*np.pi*self.freq * t) + self.phase)
+			Beff = self.Bext + np.array([0., 0., (2*self.Ku/self.Ms - self.Ms)*y[2]])  #Demag for thin films = mz*Ms and PMA anistropy
+			ydot = -self.gamma * np.cross(y, Beff)
+			return -self.gamma * np.cross(y, Beff) + self.alpha/np.linalg.norm(y) * np.cross(y, ydot)\
+			 + self.gamma*I*(1/np.linalg.norm(y)*self.ad[0]*np.cross(y, np.cross(y, self.sigma)) + self.fl[0]*np.cross(y, self.sigma))
 
 		def LLGS_alt(y, t, **kwargs):
-			j = np.sin((2*np.pi*self.freq * t) + self.phase)
-			Heff = self.H + np.array([0., 0., 2*self.Ku/self.Ms - self.Ms*y[2]])  #Demag for thin films = mz*Ms
-			return -self.gamma/(1+self.alpha**2) * (np.cross(y, Heff) + self.alpha/np.linalg.norm(y) * np.cross(y, np.cross(y, Heff)))\
-			 + j/np.linalg.norm(y)*self.ad[0]*np.cross(y, np.cross(y, self.sigma)) + j*self.fl[0]*np.cross(y, self.sigma)
+			I = np.sin((2*np.pi*self.freq * t) + self.phase)
+			Beff = self.Bext + np.array([0., 0., (2*self.Ku/self.Ms - self.Ms)*y[2]])  #Demag for thin films = mz*Ms
+			return -self.gamma/(1+self.alpha**2) * (np.cross(y, Beff) + self.alpha/np.linalg.norm(y) * np.cross(y, np.cross(y, Beff)))\
+			 + self.gamma*I * (1/np.linalg.norm(y)*self.ad[0]*np.cross(y, np.cross(y, self.sigma)) + self.fl[0]*np.cross(y, self.sigma))
 
 		def LLGS_ex(y, t, **kwargs):
-			ys, Heffs, ms = [], [], []
-			j = np.sin((2*np.pi*self.freq * t) + self.phase)
+			ys, Beffs, ms = [], [], []
+			I = np.sin((2*np.pi*self.freq * t) + self.phase)
 			for i in range(self.n):
 				ys.append(y[3*i:3*(i+1)])
 
 			for i in range(self.n):
 				if i == 0:
-					Heffs.append(self.H + np.array([0., 0., 2*self.Ku/self.Ms - self.Ms*ys[0][2]]) + self.Aex * np.array(ys[i+1]))
+					Beffs.append(self.Bext + np.array([0., 0., (2*self.Ku/self.Ms - self.Ms)*ys[0][2]]) + self.Jex * self.Ms* np.array(ys[i+1]))
 				if i == (self.n-1):
-					Heffs.append(self.H + np.array([0., 0., 2*self.Ku/self.Ms - self.Ms*ys[i][2]]) + self.Aex * np.array(ys[i-1]))
+					Beffs.append(self.Bext + np.array([0., 0., (2*self.Ku/self.Ms - self.Ms)*ys[i][2]]) + self.Jex * self.Ms* np.array(ys[i-1]))
 				if i != 0 and i != (self.n-1):
-					Heffs.append(self.H + np.array([0., 0., 2*self.Ku/self.Ms - self.Ms*ys[i][2]]) + self.Aex * (np.array(ys[i-1]) + np.array(ys[i+1])))
+					Beffs.append(self.Bext + np.array([0., 0., (2*self.Ku/self.Ms - self.Ms)*ys[i][2]]) + self.Jex * self.Ms* (np.array(ys[i-1]) + np.array(ys[i+1])))
 
 			for i in range(self.n):
 				if i == 0:
-					ms.append(-self.gamma/(1+self.alpha**2) * (np.cross(ys[0], Heffs[0]) + self.alpha/np.linalg.norm(ys[0])\
-					 * np.cross(ys[0], np.cross(ys[0], Heffs[0]))) + j/np.linalg.norm(ys[0])*self.ad[0]*np.cross(ys[0], np.cross(ys[0], self.sigma))\
-					  + j*self.fl[0]*np.cross(ys[0], self.sigma))
+					ms.append(-self.gamma/(1+self.alpha**2) * (np.cross(ys[0], Beffs[0]) + self.alpha/np.linalg.norm(ys[0])\
+					 * np.cross(ys[0], np.cross(ys[0], Beffs[0])))\
+					  + self.gamma*I*(1/np.linalg.norm(ys[0])*self.ad[0]*np.cross(ys[0], np.cross(ys[0], self.sigma))\
+					  + self.fl[0]*np.cross(ys[0], self.sigma)))
 				
 				if i != 0:
-					ms.append(-self.gamma/(1+self.alpha**2) * (np.cross(ys[i], Heffs[i]) + self.alpha/np.linalg.norm(ys[i])\
-					 * np.cross(ys[i], np.cross(ys[i], Heffs[i]))) + j/np.linalg.norm(ys[i])*self.ad[i]*np.cross(ys[i], np.cross(ys[i], self.sigma))\
-					  + j*self.fl[i]*np.cross(ys[i], self.sigma))
+					ms.append(-self.gamma/(1+self.alpha**2) * (np.cross(ys[i], Beffs[i]) + self.alpha/np.linalg.norm(ys[i])\
+					 * np.cross(ys[i], np.cross(ys[i], Beffs[i])))\
+					  + self.gamma*I*(1/np.linalg.norm(ys[i])*self.ad[i]*np.cross(ys[i], np.cross(ys[i], self.sigma))\
+					  + self.fl[i]*np.cross(ys[i], self.sigma)))
 				
 			m = []
 			for i in range(self.n):
