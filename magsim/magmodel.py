@@ -8,7 +8,7 @@ from .solvers import RKSolver, SimpleSolver, RK45Solver
 def nbcross(a, b):
     xcomp = a[1]*b[2] - a[2]*b[1]
     ycomp = -a[0]*b[2] + a[2]*b[0]
-    zcomp = a[0]*b[1] - a[1]*b[2]
+    zcomp = a[0]*b[1] - a[1]*b[0]
     return np.array([xcomp, ycomp, zcomp])
 
 @numba.njit
