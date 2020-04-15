@@ -1,7 +1,29 @@
 import numpy as np
 import scipy as sp
 import xarray as xr
+import numba
 from .solvers import RKSolver, SimpleSolver, RK45Solver
+
+@numba.njit
+def nbcross(a, b):
+    xcomp = a[1]*b[2] - a[2]*b[1]
+    ycomp = -a[0]*b[2] + a[2]*b[0]
+    zcomp = a[0]*b[1] - a[1]*b[2]
+    return np.array([xcomp, ycomp, zcomp])
+
+@numba.njit
+def calc_ms_numba(gamma, alpha, ys, Beff, I, ad, fl, sigma):
+    return -gamma/(1+alpha**2) * (nbcross(ys, Beff) + alpha/np.linalg.norm(ys)\
+                     * nbcross(ys, nbcross(ys, Beff)))\
+                      + gamma/(1+alpha**2)*I*(1/np.linalg.norm(ys)*ad*nbcross(ys, nbcross(ys, sigma))\
+                      + fl*nbcross(ys, sigma))
+
+def calc_ms(gamma, alpha, ys, Beff, I, ad, fl, sigma):
+    return -gamma/(1+alpha**2) * (np.cross(ys, Beff) + alpha/np.linalg.norm(ys)\
+                     * np.cross(ys, np.cross(ys, Beff)))\
+                      + gamma/(1+alpha**2)*I*(1/np.linalg.norm(ys)*ad*np.cross(ys, np.cross(ys, sigma))\
+                      + fl*np.cross(ys, sigma))
+
 
 class MagModel():
 	"""
@@ -26,11 +48,12 @@ class MagModel():
 	"""
 
 	def __init__(self, Bext, Ms, Ku = 0.0, alpha = 0.1, gamma = 1.76e11, ad=[0.0], fl=[0.0], sigma=np.array([0.,1.,0.])
-		, freq = 10., phase = 0.0, Jex=0., n = 2, solver = RKSolver, **kwargs):
+		, freq = 10., phase = 0.0, Jex=0., n = 2, solver = RKSolver, useNumba = False, **kwargs):
 		self.Bext, self.Ms, self.alpha, self.gamma, self.Ku = Bext, Ms, alpha, gamma, Ku
 		self.ad, self.fl, self.sigma, self.freq, self.phase = ad, fl, sigma, freq, phase
 		self.Jex, self.n = Jex, n
 		self.solver = solver
+		self.useNumba = useNumba
 
 	def setModel(self, model, **kwargs):
 		"""
@@ -74,8 +97,7 @@ class MagModel():
 		def LLGS_alt(y, t, **kwargs):
 			I = np.sin((2*np.pi*self.freq * t) + self.phase)
 			Beff = self.Bext + np.array([0., 0., (2*self.Ku/self.Ms - self.Ms)*y[2]])  #Demag for thin films = mz*Ms
-			return -self.gamma/(1+self.alpha**2) * (np.cross(y, Beff) + self.alpha/np.linalg.norm(y) * np.cross(y, np.cross(y, Beff)))\
-			 + self.gamma*I * (1/np.linalg.norm(y)*self.ad[0]*np.cross(y, np.cross(y, self.sigma)) + self.fl[0]*np.cross(y, self.sigma))
+			return calc_ms(self.gamma, self.alpha, y, Beff, I, self.ad, self.fl, self.sigma)
 
 		def LLGS_ex(y, t, **kwargs):
 			ys, Beffs, ms = [], [], []
@@ -96,16 +118,16 @@ class MagModel():
 
 			for i in range(self.n):
 				if i == 0:
-					ms.append(-self.gamma/(1+self.alpha**2) * (np.cross(ys[0], Beffs[0]) + self.alpha/np.linalg.norm(ys[0])\
-					 * np.cross(ys[0], np.cross(ys[0], Beffs[0])))\
-					  + self.gamma*I*(1/np.linalg.norm(ys[0])*self.ad[0]*np.cross(ys[0], np.cross(ys[0], self.sigma))\
-					  + self.fl[0]*np.cross(ys[0], self.sigma)))
-				
+					if self.useNumba:
+						ms.append(calc_ms_numba(self.gamma, self.alpha, ys[0], Beffs[0], I, self.ad[0], self.fl[0], self.sigma))
+					else:
+						ms.append(calc_ms(self.gamma, self.alpha, ys[0], Beffs[0], I, self.ad[0], self.fl[0], self.sigma))
+
 				if i != 0:
-					ms.append(-self.gamma/(1+self.alpha**2) * (np.cross(ys[i], Beffs[i]) + self.alpha/np.linalg.norm(ys[i])\
-					 * np.cross(ys[i], np.cross(ys[i], Beffs[i])))\
-					  + self.gamma*I*(1/np.linalg.norm(ys[i])*self.ad[i]*np.cross(ys[i], np.cross(ys[i], self.sigma))\
-					  + self.fl[i]*np.cross(ys[i], self.sigma)))
+					if self.useNumba:
+						ms.append(calc_ms_numba(self.gamma, self.alpha, ys[i], Beffs[i], I, self.ad[i], self.fl[i], self.sigma))
+					else:
+					 	ms.append(calc_ms(self.gamma, self.alpha, ys[i], Beffs[i], I, self.ad[i], self.fl[i], self.sigma))
 				
 			m = []
 			for i in range(self.n):
