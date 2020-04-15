@@ -6,10 +6,7 @@ from .solvers import RKSolver, SimpleSolver, RK45Solver
 
 @numba.njit
 def nbcross(a, b):
-    xcomp = a[1]*b[2] - a[2]*b[1]
-    ycomp = -a[0]*b[2] + a[2]*b[0]
-    zcomp = a[0]*b[1] - a[1]*b[0]
-    return np.array([xcomp, ycomp, zcomp])
+    return np.array([a[1]*b[2] - a[2]*b[1], -a[0]*b[2] + a[2]*b[0], a[0]*b[1] - a[1]*b[0]])
 
 @numba.njit
 def calc_ms_numba(gamma, alpha, ys, Beff, I, ad, fl, sigma):
