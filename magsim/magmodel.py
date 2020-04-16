@@ -3,7 +3,6 @@ import scipy as sp
 import xarray as xr
 import numba
 from .solvers import RKSolver, SimpleSolver, RK45Solver
-from .cythonFunctions import cythonCross, cythonAdd, cythonMult, cythonNorm
 
 class MagModel():
 	"""
@@ -85,8 +84,8 @@ class MagModel():
 			for i in range(self.n):
 				ys.append(y[3*i:3*(i+1)])
 
-			calc_beffs_funcs = [calc_beffs, calc_beffs_numba, calc_beffs_cython]
-			calc_ms_funcs = [calc_ms, calc_ms_numba, calc_ms_cython]
+			calc_beffs_funcs = [calc_beffs, calc_beffs_numba]
+			calc_ms_funcs = [calc_ms, calc_ms_numba]
 
 			for i in range(self.n):
 				if i == 0:
@@ -251,12 +250,3 @@ def calc_ms_numba(gamma, alpha, ys, Beff, I, ad, fl, sigma):
 @numba.njit
 def calc_beffs_numba(Bext, Ku, Ms, ysz, Jex, ys_nn):
 	return Bext + np.array([0., 0., (2*Ku/Ms - Ms)*ysz]) + Jex * Ms * ys_nn
-
-
-def calc_ms_cython(gamma, alpha, ys, Beff, I, ad, fl, sigma):
-    return cythonMult(cythonAdd(-cythonCross(ys, Beff), -cythonMult(cythonCross(ys, cythonCross(ys, Beff)), alpha/cythonNorm(ys)), \
-    	cythonMult(cythonCross(ys, cythonCross(ys, sigma)), I*ad/cythonNorm(ys)), cythonMult(cythonCross(ys, sigma), I*fl)),\
-    	 gamma/(1+alpha**2))
-
-def calc_beffs_cython(Bext, Ku, Ms, ysz, Jex, ys_nn):
-	return cythonAdd(Bext, np.array([0., 0., (2*Ku/Ms - Ms)*ysz]), cythonMult(ys_nn, Jex*Ms), np.zeros(3))

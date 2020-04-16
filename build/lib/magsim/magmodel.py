@@ -4,24 +4,6 @@ import xarray as xr
 import numba
 from .solvers import RKSolver, SimpleSolver, RK45Solver
 
-@numba.njit
-def nbcross(a, b):
-    return np.array([a[1]*b[2] - a[2]*b[1], -a[0]*b[2] + a[2]*b[0], a[0]*b[1] - a[1]*b[0]])
-
-@numba.njit
-def calc_ms_numba(gamma, alpha, ys, Beff, I, ad, fl, sigma):
-    return -gamma/(1+alpha**2) * (nbcross(ys, Beff) + alpha/np.linalg.norm(ys)\
-                     * nbcross(ys, nbcross(ys, Beff)))\
-                      + gamma/(1+alpha**2)*I*(1/np.linalg.norm(ys)*ad*nbcross(ys, nbcross(ys, sigma))\
-                      + fl*nbcross(ys, sigma))
-
-def calc_ms(gamma, alpha, ys, Beff, I, ad, fl, sigma):
-    return -gamma/(1+alpha**2) * (np.cross(ys, Beff) + alpha/np.linalg.norm(ys)\
-                     * np.cross(ys, np.cross(ys, Beff)))\
-                      + gamma/(1+alpha**2)*I*(1/np.linalg.norm(ys)*ad*np.cross(ys, np.cross(ys, sigma))\
-                      + fl*np.cross(ys, sigma))
-
-
 class MagModel():
 	"""
 	Class to contain magnet dynamics by solving the LLGS equations
@@ -45,12 +27,12 @@ class MagModel():
 	"""
 
 	def __init__(self, Bext, Ms, Ku = 0.0, alpha = 0.1, gamma = 1.76e11, ad=[0.0], fl=[0.0], sigma=np.array([0.,1.,0.])
-		, freq = 10., phase = 0.0, Jex=0., n = 2, solver = RKSolver, useNumba = False, **kwargs):
+		, freq = 10., phase = 0.0, Jex=0., n = 2, solver = RKSolver, speedup = 0, **kwargs):
 		self.Bext, self.Ms, self.alpha, self.gamma, self.Ku = Bext, Ms, alpha, gamma, Ku
 		self.ad, self.fl, self.sigma, self.freq, self.phase = ad, fl, sigma, freq, phase
 		self.Jex, self.n = Jex, n
 		self.solver = solver
-		self.useNumba = useNumba
+		self.speedup = speedup
 
 	def setModel(self, model, **kwargs):
 		"""
@@ -102,34 +84,29 @@ class MagModel():
 			for i in range(self.n):
 				ys.append(y[3*i:3*(i+1)])
 
+			calc_beffs_funcs = [calc_beffs, calc_beffs_numba]
+			calc_ms_funcs = [calc_ms, calc_ms_numba]
+
 			for i in range(self.n):
 				if i == 0:
 					if self.n == 1:
-						Beffs.append(self.Bext + np.array([0., 0., (2*self.Ku/self.Ms - self.Ms)*ys[0][2]]))
+						Beffs.append(calc_beffs_funcs[self.speedup](self.Bext, self.Ku, self.Ms, ys[0][2], self.Jex, np.zeros(3)))
 					else:
-						Beffs.append(self.Bext + np.array([0., 0., (2*self.Ku/self.Ms - self.Ms)*ys[0][2]]) + self.Jex * self.Ms* np.array(ys[i+1]))
-				if i == (self.n-1):
-					Beffs.append(self.Bext + np.array([0., 0., (2*self.Ku/self.Ms - self.Ms)*ys[i][2]]) + self.Jex * self.Ms* np.array(ys[i-1]))
+						Beffs.append(calc_beffs_funcs[self.speedup](self.Bext, self.Ku, self.Ms, ys[0][2], self.Jex, np.array(ys[1])))
 				if i != 0 and i != (self.n-1):
-					Beffs.append(self.Bext + np.array([0., 0., (2*self.Ku/self.Ms - self.Ms)*ys[i][2]]) + self.Jex * self.Ms* (np.array(ys[i-1]) + np.array(ys[i+1])))
+					Beffs.append(calc_beffs_funcs[self.speedup](self.Bext, self.Ku, self.Ms, ys[i][2], self.Jex, (np.array(ys[i-1]) + np.array(ys[i+1]))))
+				if i == (self.n-1):
+					Beffs.append(calc_beffs_funcs[self.speedup](self.Bext, self.Ku, self.Ms, ys[i][2], self.Jex, (np.array(ys[i-1]))))
 
 			for i in range(self.n):
 				if i == 0:
-					if self.useNumba:
-						ms.append(calc_ms_numba(self.gamma, self.alpha, ys[0], Beffs[0], I, self.ad[0], self.fl[0], self.sigma))
-					else:
-						ms.append(calc_ms(self.gamma, self.alpha, ys[0], Beffs[0], I, self.ad[0], self.fl[0], self.sigma))
-
+					ms.append(calc_ms_funcs[self.speedup](self.gamma, self.alpha, ys[0], Beffs[0], I, self.ad[0], self.fl[0], self.sigma))
 				if i != 0:
-					if self.useNumba:
-						ms.append(calc_ms_numba(self.gamma, self.alpha, ys[i], Beffs[i], I, self.ad[i], self.fl[i], self.sigma))
-					else:
-					 	ms.append(calc_ms(self.gamma, self.alpha, ys[i], Beffs[i], I, self.ad[i], self.fl[i], self.sigma))
-				
+					ms.append(calc_ms_funcs[self.speedup](self.gamma, self.alpha, ys[i], Beffs[i], I, self.ad[i], self.fl[i], self.sigma))
+
 			m = []
 			for i in range(self.n):
 				m += ms[i].tolist()
-			
 			return np.array(m)
 
 		self.model_name = model
@@ -242,3 +219,34 @@ class MagModel():
 		    self.diff = np.array(a.vars).transpose()[4].astype('float64')
 		    self.ds = self.ds.assign(timesteps = xr.DataArray(self.h, dims = 'time'))
 		    self.ds = self.ds.assign(RK45diffs = xr.DataArray(self.diff, dims = 'time'))
+
+#Core calculation functions for speeding up with numba and cython
+def calc_ms(gamma, alpha, ys, Beff, I, ad, fl, sigma):
+    return -gamma/(1+alpha**2) * (np.cross(ys, Beff) + alpha/np.linalg.norm(ys)\
+                     * np.cross(ys, np.cross(ys, Beff)))\
+                      + gamma/(1+alpha**2)*I*(1/np.linalg.norm(ys)*ad*np.cross(ys, np.cross(ys, sigma))\
+                      + fl*np.cross(ys, sigma))
+
+def calc_beffs(Bext, Ku, Ms, ysz, Jex, ys_nn):
+	return Bext + np.array([0., 0., (2*Ku/Ms - Ms)*ysz]) + Jex * Ms * ys_nn
+
+@numba.njit
+def nbcross(a, b):
+    return np.array([a[1]*b[2] - a[2]*b[1], -a[0]*b[2] + a[2]*b[0], a[0]*b[1] - a[1]*b[0]])
+
+@numba.njit
+def nbadd(a, b, c, d):
+    return np.array([a[0]+b[0]+c[0] + d[0], a[1]+b[1] + c[1] + d[1], a[2] + b[2] + c[2] + d[2]])
+
+@numba.njit
+def nbnorm(a):
+	return (a[0]**2 + a[1]**2 + a[2]**2)**0.5
+
+@numba.njit
+def calc_ms_numba(gamma, alpha, ys, Beff, I, ad, fl, sigma):
+    return gamma/(1+alpha**2) * nbadd(-nbcross(ys, Beff), -alpha/nbnorm(ys)\
+                     * nbcross(ys, nbcross(ys, Beff)), I*ad/nbnorm(ys)*nbcross(ys, nbcross(ys, sigma)), fl*nbcross(ys, sigma))
+
+@numba.njit
+def calc_beffs_numba(Bext, Ku, Ms, ysz, Jex, ys_nn):
+	return Bext + np.array([0., 0., (2*Ku/Ms - Ms)*ysz]) + Jex * Ms * ys_nn
