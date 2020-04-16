@@ -94,8 +94,10 @@ class MagModel():
 						Beffs.append(calc_beffs_funcs[self.speedup](self.Bext, self.Ku, self.Ms, ys[0][2], self.Jex, np.zeros(3)))
 					else:
 						Beffs.append(calc_beffs_funcs[self.speedup](self.Bext, self.Ku, self.Ms, ys[0][2], self.Jex, np.array(ys[1])))
+
 				if i != 0 and i != (self.n-1):
 					Beffs.append(calc_beffs_funcs[self.speedup](self.Bext, self.Ku, self.Ms, ys[i][2], self.Jex, (np.array(ys[i-1]) + np.array(ys[i+1]))))
+
 				if i == (self.n-1):
 					Beffs.append(calc_beffs_funcs[self.speedup](self.Bext, self.Ku, self.Ms, ys[i][2], self.Jex, (np.array(ys[i-1]))))
 
@@ -108,6 +110,7 @@ class MagModel():
 			m = []
 			for i in range(self.n):
 				m += ms[i].tolist()
+			
 			return np.array(m)
 
 		self.model_name = model
@@ -221,7 +224,7 @@ class MagModel():
 		    self.ds = self.ds.assign(timesteps = xr.DataArray(self.h, dims = 'time'))
 		    self.ds = self.ds.assign(RK45diffs = xr.DataArray(self.diff, dims = 'time'))
 
-#Core calculation functions for speeding up with numba and cython
+#Multi use Core functions
 def calc_ms(gamma, alpha, ys, Beff, I, ad, fl, sigma):
     return -gamma/(1+alpha**2) * (np.cross(ys, Beff) + alpha/np.linalg.norm(ys)\
                      * np.cross(ys, np.cross(ys, Beff)))\
