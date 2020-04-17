@@ -81,33 +81,8 @@ class MagModel():
 		def LLGS_ex(y, t, **kwargs):
 			ys, Beffs, ms = [], [], []
 			I = np.sin((2*np.pi*self.freq * t) + self.phase)
-			for i in range(self.n):
-				ys.append(y[3*i:3*(i+1)])
-
-			calc_beffs_funcs = [calc_beffs, calc_beffs_numba]
-			calc_ms_funcs = [calc_ms, calc_ms_numba]
-
-			for i in range(self.n):
-				if i == 0:
-					if self.n == 1:
-						Beffs.append(calc_beffs_funcs[self.speedup](self.Bext, self.Ku, self.Ms, ys[0][2], self.Jex, np.zeros(3)))
-					else:
-						Beffs.append(calc_beffs_funcs[self.speedup](self.Bext, self.Ku, self.Ms, ys[0][2], self.Jex, np.array(ys[1])))
-				if i != 0 and i != (self.n-1):
-					Beffs.append(calc_beffs_funcs[self.speedup](self.Bext, self.Ku, self.Ms, ys[i][2], self.Jex, (np.array(ys[i-1]) + np.array(ys[i+1]))))
-				if i == (self.n-1):
-					Beffs.append(calc_beffs_funcs[self.speedup](self.Bext, self.Ku, self.Ms, ys[i][2], self.Jex, (np.array(ys[i-1]))))
-
-			for i in range(self.n):
-				if i == 0:
-					ms.append(calc_ms_funcs[self.speedup](self.gamma, self.alpha, ys[0], Beffs[0], I, self.ad[0], self.fl[0], self.sigma))
-				if i != 0:
-					ms.append(calc_ms_funcs[self.speedup](self.gamma, self.alpha, ys[i], Beffs[i], I, self.ad[i], self.fl[i], self.sigma))
-
-			m = []
-			for i in range(self.n):
-				m += ms[i].tolist()
-			return np.array(m)
+			calc_funcs = [calc, calc_numba]
+			return calc_funcs[self.speedup](self.n, self.Bext, self.Ku, self.Ms, y, self.Jex, self.gamma, self.alpha, I, self.ad, self.fl, self.sigma)
 
 		self.model_name = model
 		if model == 'Precession':
@@ -222,13 +197,21 @@ class MagModel():
 
 #Core calculation functions for speeding up with numba and cython
 def calc_ms(gamma, alpha, ys, Beff, I, ad, fl, sigma):
-    return -gamma/(1+alpha**2) * (np.cross(ys, Beff) + alpha/np.linalg.norm(ys)\
-                     * np.cross(ys, np.cross(ys, Beff)))\
-                      + gamma/(1+alpha**2)*I*(1/np.linalg.norm(ys)*ad*np.cross(ys, np.cross(ys, sigma))\
-                      + fl*np.cross(ys, sigma))
+	return -gamma/(1+alpha**2) * (np.cross(ys, Beff) + alpha/np.linalg.norm(ys)\
+		* np.cross(ys, np.cross(ys, Beff)))\
+		+ gamma/(1+alpha**2)*I*(1/np.linalg.norm(ys)*ad*np.cross(ys, np.cross(ys, sigma))\
+		+ fl*np.cross(ys, sigma))
 
-def calc_beffs(Bext, Ku, Ms, ysz, Jex, ys_nn):
-	return Bext + np.array([0., 0., (2*Ku/Ms - Ms)*ysz]) + Jex * Ms * ys_nn
+def calc(n, Bext, Ku, Ms, ys, Jex, gamma, alpha, I, ad, fl, sigma):
+	ms = np.zeros(3*n)
+	ys_n = np.zeros(3*(n+2))
+	for i in range(3*n):
+		ys_n[i + 3] = ys[i]
+
+	for i in range(n):
+		Beff = Bext + np.array([0., 0., (2.*Ku/Ms - Ms)*ys[3*i + 2]]) + Jex * Ms * (ys_n[3*i:3*(i+1)] + ys_n[3*(i+2):3*(i+3)])
+		ms[3*i], ms[3*i+1], ms[3*i+2] = calc_ms(gamma, alpha, ys[3*i:3*(i+1)], Beff, I, ad[i], fl[i], sigma)
+	return ms
 
 @numba.njit
 def nbcross(a, b):
@@ -248,5 +231,13 @@ def calc_ms_numba(gamma, alpha, ys, Beff, I, ad, fl, sigma):
                      * nbcross(ys, nbcross(ys, Beff)), I*ad/nbnorm(ys)*nbcross(ys, nbcross(ys, sigma)), fl*nbcross(ys, sigma))
 
 @numba.njit
-def calc_beffs_numba(Bext, Ku, Ms, ysz, Jex, ys_nn):
-	return Bext + np.array([0., 0., (2*Ku/Ms - Ms)*ysz]) + Jex * Ms * ys_nn
+def calc_numba(n, Bext, Ku, Ms, ys, Jex, gamma, alpha, I, ad, fl, sigma):
+	ms = np.zeros(3*n)
+	ys_n = np.zeros(3*(n+2))
+	for i in range(3*n):
+		ys_n[i + 3] = ys[i]
+
+	for i in range(n):
+		Beff = Bext + np.array([0., 0., (2.*Ku/Ms - Ms)*ys[3*i + 2]]) + Jex * Ms * (ys_n[3*i:3*(i+1)] + ys_n[3*(i+2):3*(i+3)])
+		ms[3*i], ms[3*i+1], ms[3*i+2] = calc_ms_numba(gamma, alpha, ys[3*i:3*(i+1)], Beff, I, ad[i], fl[i], sigma)
+	return ms
