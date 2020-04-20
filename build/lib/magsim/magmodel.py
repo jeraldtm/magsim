@@ -26,14 +26,17 @@ class MagModel():
 	ds: Xarray dataset
 	"""
 
-	def __init__(self, Bext, Ms, Ku = 0.0, alpha = 0.1, gamma = 1.76e11, ad=[0.0], fl=[0.0], sigma=np.array([0.,1.,0.])
-		, freq = 10., phase = 0.0, Jex=0., n = 2, solver = RKSolver, speedup = 0, **kwargs):
+	def sinusoid(t):
+		return np.cos(2*np.pi*10*t)
+
+	def __init__(self, Bext, Ms, Ku = 0., alpha = 0.01, gamma = 1.76e11, ad=[0.0], fl=[0.0], sigma=np.array([0.,1.,0.]),
+	 Ifunc = sinusoid, Jex=0., n = 1, solver = RKSolver, speedup = 0, **kwargs):
 		self.Bext, self.Ms, self.alpha, self.gamma, self.Ku = Bext, Ms, alpha, gamma, Ku
-		self.ad, self.fl, self.sigma, self.freq, self.phase = ad, fl, sigma, freq, phase
+		self.ad, self.fl, self.sigma, self.Ifunc = ad, fl, sigma, Ifunc
 		self.Jex, self.n = Jex, n
 		self.solver = solver
 		self.speedup = speedup
-
+		# print(Bext, Ms, Ku, alpha, gamma, ad, fl, sigma, Jex, n)
 	def setModel(self, model, **kwargs):
 		"""
 		sets the differential equation to be used in the simulation
@@ -67,25 +70,23 @@ class MagModel():
 			return -self.gamma * np.cross(y, Beff) + self.alpha* np.cross(y, ydot)
 
 		def LLGS(y, t, **kwargs):
-			I = np.sin((2*np.pi*self.freq * t) + self.phase)
+			# I = np.sin((2*np.pi*self.freq * t) + self.phase)
+			I = self.Ifunc(t)
 			Beff = self.Bext + np.array([0., 0., (2*self.Ku/self.Ms - self.Ms)*y[2]])  #Demag for thin films = mz*Ms and PMA anistropy
 			ydot = -self.gamma * np.cross(y, Beff)
 			return -self.gamma * np.cross(y, Beff) + self.alpha/np.linalg.norm(y) * np.cross(y, ydot)\
 			 + self.gamma*I*(1/np.linalg.norm(y)*self.ad[0]*np.cross(y, np.cross(y, self.sigma)) + self.fl[0]*np.cross(y, self.sigma))
 
 		def LLGS_alt(y, t, **kwargs):
-			I = np.sin((2*np.pi*self.freq * t) + self.phase)
+			I = self.Ifunc(t)
 			Beff = self.Bext + np.array([0., 0., (2*self.Ku/self.Ms - self.Ms)*y[2]])  #Demag for thin films = mz*Ms
 			return calc_ms(self.gamma, self.alpha, y, Beff, I, self.ad, self.fl, self.sigma)
 
 		def LLGS_ex(y, t, **kwargs):
 			ys, Beffs, ms = [], [], []
-			I = np.sin((2*np.pi*self.freq * t) + self.phase)
-			# for i in range(self.n):
-			# 	ys.append(y[3*i:3*(i+1)])
-
+			I = self.Ifunc(t)
 			calc_funcs = [calc, calc_numba]
-			return calc_funcs[self.speedup](self.n, self.Bext, self.Ku, self.Ms, y, self.Jex, self.gamma, self.alpha, I, self.ad, self.fl, self.sigma)
+			return calc_funcs[self.speedup](self.n, self.Bext, self.Ku, self.Ms, np.array(y), self.Jex, self.gamma, self.alpha, I, self.ad, self.fl, self.sigma)
 
 		self.model_name = model
 		if model == 'Precession':
