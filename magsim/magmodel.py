@@ -201,9 +201,9 @@ class MagModel():
 
 #Core calculation functions for speeding up with numba and cython
 def calc_ms(gamma, alpha, ys, Beff, I, ad, fl, sigma):
-	return -gamma/(1+alpha**2) * (np.cross(ys, Beff) + alpha/np.linalg.norm(ys)\
-		* np.cross(ys, np.cross(ys, Beff)))\
-		+ gamma/(1+alpha**2)*I*(1/np.linalg.norm(ys)*ad*np.cross(ys, np.cross(ys, sigma))\
+	return gamma/(1+alpha**2) * (-np.cross(ys, Beff) - alpha/np.linalg.norm(ys)\
+		* np.cross(ys, np.cross(ys, Beff))\
+		+ I*ad/np.linalg.norm(ys)*np.cross(ys, np.cross(ys, sigma))\
 		+ fl*np.cross(ys, sigma))
 
 def calc(n, Bext, Ku, Ms, ys, Jex, gamma, alpha, I, ad, fl, sigma):
