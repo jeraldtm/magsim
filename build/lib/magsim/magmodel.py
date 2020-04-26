@@ -16,9 +16,25 @@ class MagModel():
 	Attributes
 	----------
 	f : differential equation governing time evolution of m.
-	H: external field
-	gamma: gyrromagnetic ratio
-	alpha: Gilbert damping
+	Bext: external field
+	Ms:
+	Ku
+	alpha: float
+				Gilbert damping
+	gamma: float
+				gyrromagnetic ratio
+	ad: array
+			ad torque effective fields
+	fl: array
+			fl torque effective fields
+	sigma: array
+			spin polarisation
+	Ifunc: function(t)
+			input current function
+	Jex: float
+			exchange coupling strength
+	solver: function
+			method for integration
 	xs: array of mx values
 	ys: array of my values
 	zs: array of mz values
@@ -29,7 +45,7 @@ class MagModel():
 	def sinusoid(t):
 		return np.cos(2*np.pi*10*t)
 
-	def __init__(self, Bext, Ms, Ku = 0., alpha = 0.01, gamma = 1.76e11, ad=[0.0], fl=[0.0], sigma=np.array([0.,1.,0.]),
+	def __init__(self, Bext, Ms, Ku = np.array([0., 0., 0.]), alpha = 0.01, gamma = 1.76e11, ad=[0.0], fl=[0.0], sigma=np.array([0.,1.,0.]),
 	 Ifunc = sinusoid, Jex=0., n = 1, solver = RKSolver, speedup = 0, **kwargs):
 		self.Bext, self.Ms, self.alpha, self.gamma, self.Ku = Bext, Ms, alpha, gamma, Ku
 		self.ad, self.fl, self.sigma, self.Ifunc = ad, fl, sigma, Ifunc
@@ -213,7 +229,10 @@ def calc(n, Bext, Ku, Ms, ys, Jex, gamma, alpha, I, ad, fl, sigma):
 		ys_n[i + 3] = ys[i]
 
 	for i in range(n):
-		Beff = Bext + np.array([0., 0., (2.*Ku/Ms - Ms)*ys[3*i + 2]]) + Jex * Ms * (ys_n[3*i:3*(i+1)] + ys_n[3*(i+2):3*(i+3)])
+		Beff = Bext + (2.*Ku/Ms - np.array([0., 0., Ms]))*np.array([ ys[3*i], ys[3*i + 1],ys[3*i + 2]]) + Jex * Ms * (ys_n[3*i:3*(i+1)] + ys_n[3*(i+2):3*(i+3)])
+
+
+		# Beff = Bext + np.array([0., 0., (2.*Ku/Ms - Ms)*ys[3*i + 2]]) + Jex * Ms * (ys_n[3*i:3*(i+1)] + ys_n[3*(i+2):3*(i+3)])
 		ms[3*i], ms[3*i+1], ms[3*i+2] = calc_ms(gamma, alpha, ys[3*i:3*(i+1)], Beff, I, ad[i], fl[i], sigma)
 	return ms
 
@@ -242,6 +261,8 @@ def calc_numba(n, Bext, Ku, Ms, ys, Jex, gamma, alpha, I, ad, fl, sigma):
 		ys_n[i + 3] = ys[i]
 
 	for i in range(n):
-		Beff = Bext + np.array([0., 0., (2.*Ku/Ms - Ms)*ys[3*i + 2]]) + Jex * Ms * (ys_n[3*i:3*(i+1)] + ys_n[3*(i+2):3*(i+3)])
+		Beff = Bext + (2.*Ku/Ms - np.array([0., 0., Ms]))*np.array([ys[3*i], ys[3*i + 1],ys[3*i + 2]]) + Jex * Ms * (ys_n[3*i:3*(i+1)] + ys_n[3*(i+2):3*(i+3)])
+
+		# Beff = Bext + np.array([0., 0., (2.*Ku/Ms - Ms)*ys[3*i + 2]]) + Jex * Ms * (ys_n[3*i:3*(i+1)] + ys_n[3*(i+2):3*(i+3)])
 		ms[3*i], ms[3*i+1], ms[3*i+2] = calc_ms_numba(gamma, alpha, ys[3*i:3*(i+1)], Beff, I, ad[i], fl[i], sigma)
 	return ms
