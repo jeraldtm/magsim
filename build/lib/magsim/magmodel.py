@@ -229,8 +229,7 @@ def calc(n, Bext, Ku, Ms, ys, Jex, gamma, alpha, I, ad, fl, sigma):
 		ys_n[i + 3] = ys[i]
 
 	for i in range(n):
-		Beff = Bext + (2.*Ku/Ms - np.array([0., 0., Ms]))*np.array([ ys[3*i], ys[3*i + 1],ys[3*i + 2]]) + Jex * Ms * (ys_n[3*i:3*(i+1)] + ys_n[3*(i+2):3*(i+3)])
-
+		Beff = Bext[3*i:3*(i+1)] + (2.*Ku[3*i:3*(i+1)]/Ms - np.array([0., 0., Ms]))*np.array([ ys[3*i], ys[3*i + 1],ys[3*i + 2]]) + Jex * Ms * (ys_n[3*i:3*(i+1)] + ys_n[3*(i+2):3*(i+3)])
 
 		# Beff = Bext + np.array([0., 0., (2.*Ku/Ms - Ms)*ys[3*i + 2]]) + Jex * Ms * (ys_n[3*i:3*(i+1)] + ys_n[3*(i+2):3*(i+3)])
 		ms[3*i], ms[3*i+1], ms[3*i+2] = calc_ms(gamma, alpha, ys[3*i:3*(i+1)], Beff, I, ad[i], fl[i], sigma)
@@ -261,7 +260,7 @@ def calc_numba(n, Bext, Ku, Ms, ys, Jex, gamma, alpha, I, ad, fl, sigma):
 		ys_n[i + 3] = ys[i]
 
 	for i in range(n):
-		Beff = Bext + (2.*Ku/Ms - np.array([0., 0., Ms]))*np.array([ys[3*i], ys[3*i + 1],ys[3*i + 2]]) + Jex * Ms * (ys_n[3*i:3*(i+1)] + ys_n[3*(i+2):3*(i+3)])
+		Beff = Bext[3*i:3*(i+1)]  + (2.*Ku[3*i:3*(i+1)]/Ms - np.array([0., 0., Ms]))*np.array([ys[3*i], ys[3*i + 1],ys[3*i + 2]]) + Jex * Ms * (ys_n[3*i:3*(i+1)] + ys_n[3*(i+2):3*(i+3)])
 
 		# Beff = Bext + np.array([0., 0., (2.*Ku/Ms - Ms)*ys[3*i + 2]]) + Jex * Ms * (ys_n[3*i:3*(i+1)] + ys_n[3*(i+2):3*(i+3)])
 		ms[3*i], ms[3*i+1], ms[3*i+2] = calc_ms_numba(gamma, alpha, ys[3*i:3*(i+1)], Beff, I, ad[i], fl[i], sigma)
