@@ -80,8 +80,8 @@ class RK45Solver():
 		diff = abs(y_n4[0] - y_n5[0]) + abs(y_n4[1] - y_n5[1]) + abs(y_n4[2] - y_n4[2])
 		if diff !=0:
 			hnew = self.h* (self.eps/(2*diff)**(0.25))
-		else:
+		elif diff == 0:
 			hnew = self.hlim[1]
-		if (hnew < self.hlim[1]) and (hnew > self.hlim[0]):
+		if (hnew <= self.hlim[1]) and (hnew >= self.hlim[0]):
 			self.h = hnew
 		self.vars.append([y_n, ydot_n, t_n, self.h, diff])
