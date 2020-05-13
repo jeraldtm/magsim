@@ -49,7 +49,7 @@ class MagModel():
 	 Ifunc = sinusoid, Jex=0., n = 1, solver = RKSolver, speedup = 0, **kwargs):
 		self.Bext, self.Ms, self.alpha, self.gamma, self.Ku = Bext, Ms, alpha, gamma, Ku
 		self.ad, self.fl, self.sigma, self.Ifunc = ad, fl, sigma, Ifunc
-		self.Jex, self.n = Jex, n
+		self.Jex, self.n = np.array(Jex), n
 		self.solver = solver
 		self.speedup = speedup
 		# print(Bext, Ms, Ku, alpha, gamma, ad, fl, sigma, Jex, n)
@@ -227,9 +227,13 @@ def calc(n, Bext, Ku, Ms, ys, Jex, gamma, alpha, I, ad, fl, sigma):
 	ys_n = np.zeros(3*(n+2))
 	for i in range(3*n):
 		ys_n[i + 3] = ys[i]
+	
+	Jex_n = np.zeros(n+2)
+	for i in range(n):
+		Jex_n[i+1] = Jex[i]
 
 	for i in range(n):
-		Beff = Bext[3*i:3*(i+1)] + (2.*Ku[3*i:3*(i+1)]/Ms - np.array([0., 0., Ms]))*np.array([ ys[3*i], ys[3*i + 1],ys[3*i + 2]]) + Jex * Ms * (ys_n[3*i:3*(i+1)] + ys_n[3*(i+2):3*(i+3)])
+		Beff = Bext[3*i:3*(i+1)] + (2.*Ku[3*i:3*(i+1)]/Ms - np.array([0., 0., Ms]))*np.array([ ys[3*i], ys[3*i + 1],ys[3*i + 2]]) + Jex[i] * ys_n[3*i:3*(i+1)] + Jex[i+1] * ys_n[3*(i+2):3*(i+3)]
 
 		# Beff = Bext + np.array([0., 0., (2.*Ku/Ms - Ms)*ys[3*i + 2]]) + Jex * Ms * (ys_n[3*i:3*(i+1)] + ys_n[3*(i+2):3*(i+3)])
 		ms[3*i], ms[3*i+1], ms[3*i+2] = calc_ms(gamma, alpha, ys[3*i:3*(i+1)], Beff, I, ad[i], fl[i], sigma)
@@ -258,10 +262,13 @@ def calc_numba(n, Bext, Ku, Ms, ys, Jex, gamma, alpha, I, ad, fl, sigma):
 	ys_n = np.zeros(3*(n+2))
 	for i in range(3*n):
 		ys_n[i + 3] = ys[i]
+	
+	Jex_n = np.zeros(n+2)
+	for i in range(n):
+		Jex_n[i+1] = Jex[i]
 
 	for i in range(n):
-		Beff = Bext[3*i:3*(i+1)]  + (2.*Ku[3*i:3*(i+1)]/Ms - np.array([0., 0., Ms]))*np.array([ys[3*i], ys[3*i + 1],ys[3*i + 2]]) + Jex * Ms * (ys_n[3*i:3*(i+1)] + ys_n[3*(i+2):3*(i+3)])
-
+		Beff = Bext[3*i:3*(i+1)]  + (2.*Ku[3*i:3*(i+1)]/Ms - np.array([0., 0., Ms]))*np.array([ys[3*i], ys[3*i + 1],ys[3*i + 2]]) + Jex[i] * ys_n[3*i:3*(i+1)] + Jex[i+1] * ys_n[3*(i+2):3*(i+3)]
 		# Beff = Bext + np.array([0., 0., (2.*Ku/Ms - Ms)*ys[3*i + 2]]) + Jex * Ms * (ys_n[3*i:3*(i+1)] + ys_n[3*(i+2):3*(i+3)])
 		ms[3*i], ms[3*i+1], ms[3*i+2] = calc_ms_numba(gamma, alpha, ys[3*i:3*(i+1)], Beff, I, ad[i], fl[i], sigma)
 	return ms
