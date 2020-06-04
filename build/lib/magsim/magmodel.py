@@ -167,7 +167,7 @@ class MagModel():
 		"""
 		self.a = self.solver(self.model, y0, **kwargs)
 		y_n = np.array(self.a.vars[-1][0])
-		diff = np.dot(abs(y0[:3]), np.ones(len(y0[:3])))
+		diff = np.dot(abs(np.array(y0[:3])), np.ones(len(y0[:3])))
 		step = 0
 
 		while diff > tol and step < max_steps:
