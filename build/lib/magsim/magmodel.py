@@ -54,9 +54,8 @@ class MagModel():
 		self.solver = solver
 		self.speedup = speedup
 		self.h = h
-		self.Btherm = [[0., 0., 0.]]
+		self.Btherm = [[[0., 0., 0.] for i in range(self.n)]]
 
-		# print(Bext, Ms, Ku, alpha, gamma, ad, fl, sigma, Jex, n)
 	def setModel(self, model, **kwargs):
 		"""
 		sets the differential equation to be used in the simulation
@@ -169,7 +168,7 @@ class MagModel():
 		self.a = self.solver(self.model, y0, **kwargs)
 		for i in range(int(steps)):
 			if self.T != 0:
-				self.Btherm.append((np.sqrt(2*self.alpha*1.38e-23*self.T/(self.gamma**2 * self.Ms * self.V * self.h))*np.array([[np.random.normal(), np.random.normal(), np.random.normal()], [np.random.normal(), np.random.normal(), np.random.normal()]])).tolist())
+				self.Btherm.append((np.sqrt(2*self.alpha*1.38e-23*self.T/(self.gamma**2 * self.Ms * self.V * self.h))*np.array([[np.random.normal(), np.random.normal(), np.random.normal()] for i in range(self.n)])).tolist())
 			self.a.step(**kwargs)
 		self.storeOutput()
 
@@ -200,7 +199,7 @@ class MagModel():
 
 		while diff > tol and step < max_steps:
 			if self.T != 0:
-				self.Btherm.append((np.sqrt(2*self.alpha*1.38e-23*self.T/(self.gamma**2 * self.Ms * self.V * self.h))*np.array([[np.random.normal(), np.random.normal(), np.random.normal()], [np.random.normal(), np.random.normal(), np.random.normal()]])).tolist())
+				self.Btherm.append((np.sqrt(2*self.alpha*1.38e-23*self.T/(self.gamma**2 * self.Ms * self.V * self.h))*np.array([[np.random.normal(), np.random.normal(), np.random.normal()] for i in range(self.n)])).tolist())
 			self.a.step(**kwargs)
 			step+=1
 			y_np1 = np.array(self.a.vars[-1][0])
