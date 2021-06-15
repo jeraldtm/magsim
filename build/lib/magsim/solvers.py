@@ -27,7 +27,7 @@ class RKSolver():
         y_n = y + 1/6. * self.h*(k1 + 2*k2 + 2*k3 + k4)
         ydot_n = self.f(y = y_n, ydot = ydot, t = t, **kwargs)
         t_n = t + self.h
-        self.vars.append([y_n, ydot_n, t_n])
+        self.vars.append([y_n.tolist(), ydot_n, t_n])
 
 class RK45Solver():
 	def __init__(self, f, y0, ydot0 = 0., t0 = 0., h=1, hlim = [0.1, 2.], eps = 0.1, **kwargs):

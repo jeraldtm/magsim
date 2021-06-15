@@ -169,7 +169,7 @@ class MagModel():
 		self.a = self.solver(self.model, y0, **kwargs)
 		for i in range(int(steps)):
 			if self.T != 0:
-				self.Btherm.append((np.sqrt(2*self.alpha*1.38e-23*self.T/(self.gamma**2 * self.Ms * self.V * self.h))*np.array([np.random.normal(), np.random.normal(), np.random.normal()])).tolist())
+				self.Btherm.append((np.sqrt(2*self.alpha*1.38e-23*self.T/(self.gamma**2 * self.Ms * self.V * self.h))*np.array([[np.random.normal(), np.random.normal(), np.random.normal()], [np.random.normal(), np.random.normal(), np.random.normal()]])).tolist())
 			self.a.step(**kwargs)
 		self.storeOutput()
 
@@ -194,13 +194,13 @@ class MagModel():
 		    timestep
 		"""
 		self.a = self.solver(self.model, y0, **kwargs)
-		y_n = np.array(self.a.vars[-1][0])
+		y_n = self.a.vars[-1][0]
 		diff = np.dot(abs(np.array(y0[:3])), np.ones(len(y0[:3])))
 		step = 0
 
 		while diff > tol and step < max_steps:
 			if self.T != 0:
-				self.Btherm.append((np.sqrt(2*self.alpha*1.38e-23*self.T/(self.gamma**2 * self.Ms * self.V * self.h))*np.array([np.random.normal(), np.random.normal(), np.random.normal()])).tolist())
+				self.Btherm.append((np.sqrt(2*self.alpha*1.38e-23*self.T/(self.gamma**2 * self.Ms * self.V * self.h))*np.array([[np.random.normal(), np.random.normal(), np.random.normal()], [np.random.normal(), np.random.normal(), np.random.normal()]])).tolist())
 			self.a.step(**kwargs)
 			step+=1
 			y_np1 = np.array(self.a.vars[-1][0])
@@ -211,13 +211,14 @@ class MagModel():
 
 	def storeOutput(self, **kwargs):
 		a = self.a
-		self.x = np.array([np.array(a.vars).transpose()[0][i][0] for i in range(len(np.array(a.vars).transpose()[0]))])
-		self.y = np.array([np.array(a.vars).transpose()[0][i][1] for i in range(len(np.array(a.vars).transpose()[0]))])
-		self.z = np.array([np.array(a.vars).transpose()[0][i][2] for i in range(len(np.array(a.vars).transpose()[0]))])
-		self.t = np.array(np.array(a.vars).transpose()[2]).astype('float64')
+		var_trans = np.array(a.vars, dtype = "object").transpose()
+		self.x = [var_trans[0][i][0] for i in range(len(var_trans[0]))]
+		self.y = [var_trans[0][i][1] for i in range(len(var_trans[0]))]
+		self.z = [var_trans[0][i][2] for i in range(len(var_trans[0]))]
+		self.t = var_trans[2]
 		
 		self.phi = np.arctan2(self.y, self.x).astype('float64')
-		self.theta = np.arctan2(np.sqrt(self.x**2 + self.y**2), self.z)
+		self.theta = np.arctan2(np.sqrt(np.array(self.x)**2 + np.array(self.y)**2), np.array(self.z))
 		self.AMR = np.sin(self.phi)**2*np.sin(self.theta)**2
 		self.AHE = np.cos(self.theta)
 		self.PHE = np.sin(self.theta)**2*np.sin(2*self.phi)
@@ -229,9 +230,9 @@ class MagModel():
 		if self.model_name == 'LLGS_ex':
 			self.xs, self.ys, self.zs = [], [], []
 			for i in range(self.n):
-				x = np.array([np.array(a.vars).transpose()[0][pt][3*i] for pt in range(len(np.array(a.vars).transpose()[0]))])
-				y = np.array([np.array(a.vars).transpose()[0][pt][3*i + 1] for pt in range(len(np.array(a.vars).transpose()[0]))])
-				z = np.array([np.array(a.vars).transpose()[0][pt][3*i + 2] for pt in range(len(np.array(a.vars).transpose()[0]))])
+				x = [var_trans[0][pt][3*i] for pt in range(len(var_trans[0]))]
+				y = [var_trans[0][pt][3*i + 1] for pt in range(len(var_trans[0]))]
+				z = [var_trans[0][pt][3*i + 2] for pt in range(len(var_trans[0]))]
 				self.xs.append(x)
 				self.ys.append(y)
 				self.zs.append(z)
@@ -240,8 +241,8 @@ class MagModel():
 		self.ds = xr.Dataset(data_vars=vars_dict, coords={'time': self.t})
 
 		if self.solver == RK45Solver:
-		    self.h = np.array(a.vars).transpose()[3].astype('float64')
-		    self.diff = np.array(a.vars).transpose()[4].astype('float64')
+		    self.h = var_trans[3].astype('float64')
+		    self.diff = var_trans[4].astype('float64')
 		    self.ds = self.ds.assign(timesteps = xr.DataArray(self.h, dims = 'time'))
 		    self.ds = self.ds.assign(RK45diffs = xr.DataArray(self.diff, dims = 'time'))
 
@@ -264,7 +265,7 @@ def calc(n, Bext, Ku, Ms, ys, Jex, gamma, alpha, I, ad, fl, sigma, Btherm, **kwa
 
 	for i in range(n):
 		Beff = Bext[3*i:3*(i+1)]  + (2.*Ku[3*i:3*(i+1)]/Ms - np.array([0., 0., Ms]))*np.array([ys[3*i], ys[3*i + 1],ys[3*i + 2]]) + Jex_n[i] * ys_n[3*i:3*(i+1)] + Jex_n[i+1] * ys_n[3*(i+2):3*(i+3)] 
-		ms[3*i], ms[3*i+1], ms[3*i+2] = calc_ms(gamma, alpha, ys[3*i:3*(i+1)], Beff, I, ad[i], fl[i], sigma, Btherm)
+		ms[3*i], ms[3*i+1], ms[3*i+2] = calc_ms(gamma, alpha, ys[3*i:3*(i+1)], Beff, I, ad[i], fl[i], sigma, Btherm[i])
 	return ms
 
 @numba.njit
@@ -298,5 +299,5 @@ def calc_numba(n, Bext, Ku, Ms, ys, Jex, gamma, alpha, I, ad, fl, sigma, Btherm)
 	for i in range(n):
 		Beff = Bext[3*i:3*(i+1)]  + (2.*Ku[3*i:3*(i+1)]/Ms - np.array([0., 0., Ms]))*np.array([ys[3*i], ys[3*i + 1],ys[3*i + 2]]) + Jex_n[i] * ys_n[3*i:3*(i+1)] + Jex_n[i+1] * ys_n[3*(i+2):3*(i+3)]
 		# Beff = Bext + np.array([0., 0., (2.*Ku/Ms - Ms)*ys[3*i + 2]]) + Jex * Ms * (ys_n[3*i:3*(i+1)] + ys_n[3*(i+2):3*(i+3)])
-		ms[3*i], ms[3*i+1], ms[3*i+2] = calc_ms_numba(gamma, alpha, ys[3*i:3*(i+1)], Beff, I, ad[i], fl[i], sigma, Btherm)
+		ms[3*i], ms[3*i+1], ms[3*i+2] = calc_ms_numba(gamma, alpha, ys[3*i:3*(i+1)], Beff, I, ad[i], fl[i], sigma, Btherm[i])
 	return ms
