@@ -2,6 +2,7 @@ import numpy as np
 import scipy as sp
 import xarray as xr
 import numba
+from scipy.constants import *
 from .solvers import RKSolver, SimpleSolver, RK45Solver
 
 class MagModel():
@@ -45,7 +46,7 @@ class MagModel():
 	def sinusoid(t):
 		return np.cos(2*np.pi*10*t)
 
-	def __init__(self, Bext, Ms, Ku = np.array([0., 0., 0.]), alpha = 0.01, gamma = 1.76e11, ad=[0.0], fl=[0.0], sigma=np.array([0.,1.,0.]),
+	def __init__(self, Bext, Ms, Ku = np.array([0., 0., 0.]), alpha = 0.01, gamma = 28.025e9, ad=[0.0], fl=[0.0], sigma=np.array([0.,1.,0.]),
 	 Ifunc = sinusoid, Jex=0., n = 1, T = 0, V = 1e-19, h = 1e-12, solver = RKSolver, speedup = 0, **kwargs):
 		self.Bext, self.Ms, self.alpha, self.gamma, self.Ku = Bext, Ms, alpha, gamma, Ku
 		self.ad, self.fl, self.sigma, self.Ifunc = ad, fl, sigma, Ifunc
@@ -62,7 +63,7 @@ class MagModel():
 		Parameters
 		----------
 		model: string
-		    should be 'Precession', 'Gilbert', or 'LLGS'
+		    should be one of 'Precession', 'Gilbert', 'LLGS_ex'
 		alpha : float
 		    Gilbert damping parameter
 		gamma : float
@@ -168,7 +169,9 @@ class MagModel():
 		self.a = self.solver(self.model, y0, **kwargs)
 		for i in range(int(steps)):
 			if self.T != 0:
-				self.Btherm.append((np.sqrt(2*self.alpha*1.38e-23*self.T/(self.gamma**2 * self.Ms * self.V * self.h))*np.array([[np.random.normal(), np.random.normal(), np.random.normal()] for i in range(self.n)])).tolist())
+				rand_vec = np.array([np.random.normal(0., size = 3).tolist() for i in range(self.n)])
+				BthermMag = (1 + self.alpha**2)*np.sqrt(2*self.alpha*k*self.T/(self.gamma *self.Ms * self.V * self.h))
+				self.Btherm.append((BthermMag*rand_vec).tolist()) #Thermal Field from Belrhazi
 			self.a.step(**kwargs)
 		self.storeOutput()
 
@@ -199,7 +202,10 @@ class MagModel():
 
 		while diff > tol and step < max_steps:
 			if self.T != 0:
-				self.Btherm.append((np.sqrt(2*self.alpha*1.38e-23*self.T/(self.gamma**2 * self.Ms * self.V * self.h))*np.array([[np.random.normal(), np.random.normal(), np.random.normal()] for i in range(self.n)])).tolist())
+				# rand_vec = np.array([[np.random.normal(), np.random.normal(), np.random.normal()] for i in range(self.n)])
+				rand_vec = np.array([np.random.normal(0., size = 3).tolist() for i in range(self.n)])
+				BthermMag = (1 + self.alpha**2)*np.sqrt(2*self.alpha*k*self.T/(self.gamma * self.Ms * self.V * self.h))
+				self.Btherm.append((BthermMag*rand_vec).tolist()) #Thermal Field from Belrhazi #Thermal Field from Belrhazi
 			self.a.step(**kwargs)
 			step+=1
 			y_np1 = np.array(self.a.vars[-1][0])
@@ -247,10 +253,16 @@ class MagModel():
 
 #Core calculation functions for speeding up with numba and cython
 def calc_ms(gamma, alpha, ys, Beff, I, ad, fl, sigma, Btherm, **kwargs):
-	return gamma/(1+alpha**2) * (-np.cross(ys, np.array(Beff) + np.array(Btherm)) - alpha/np.linalg.norm(ys)\
-		* np.cross(ys, np.cross(ys, Beff))\
-		+ I*ad/np.linalg.norm(ys)*np.cross(ys, np.cross(ys, sigma))\
-		+ fl*np.cross(ys, sigma))
+	Heff = Beff
+	# return gamma/(1+alpha**2) * (-np.cross(ys, np.array(Heff) + np.array(Btherm)) - alpha/np.linalg.norm(ys)\
+	# 	* np.cross(ys, np.cross(ys, Heff))\
+	# 	+ I*ad/np.linalg.norm(ys)*np.cross(ys, np.cross(ys, sigma))\
+	# 	+ fl*np.cross(ys, sigma))
+
+	return gamma/(1+alpha**2) * (-np.cross(ys, np.array(Heff) + np.array(Btherm)) - alpha\
+		* np.cross(ys, np.cross(ys, Heff))\
+		+ I*ad/mu_0*np.cross(ys, np.cross(ys, sigma))\
+		+ fl/mu_0*np.cross(ys, sigma))
 
 def calc(n, Bext, Ku, Ms, ys, Jex, gamma, alpha, I, ad, fl, sigma, Btherm, **kwargs):
 	ms = np.zeros(3*n)
@@ -281,8 +293,10 @@ def nbnorm(a):
 
 @numba.njit
 def calc_ms_numba(gamma, alpha, ys, Beff, I, ad, fl, sigma, Btherm):
-    return gamma/(1+alpha**2) * nbadd(-nbcross(ys, nbadd(Beff, Btherm, [0, 0, 0], [0, 0, 0])), -alpha/nbnorm(ys)\
-                     * nbcross(ys, nbcross(ys, Beff)), I*ad/nbnorm(ys)*nbcross(ys, nbcross(ys, sigma)), fl*nbcross(ys, sigma))
+	Heff = Beff
+    # return gamma/(1+alpha**2) * nbadd(-nbcross(ys, nbadd(Heff, Btherm, [0, 0, 0], [0, 0, 0])), -alpha/nbnorm(ys)\
+    #                  * nbcross(ys, nbcross(ys, Beff)), I*ad/nbnorm(ys)*nbcross(ys, nbcross(ys, sigma)), fl*nbcross(ys, sigma))
+	return gamma/(1+alpha**2) * nbadd(-nbcross(ys, nbadd(Heff, Btherm, [0, 0, 0], [0, 0, 0])), -alpha * nbcross(ys, nbcross(ys, Heff)), I*ad/mu_0*nbcross(ys, nbcross(ys, sigma)), fl/mu_0*nbcross(ys, sigma))
 
 @numba.njit
 def calc_numba(n, Bext, Ku, Ms, ys, Jex, gamma, alpha, I, ad, fl, sigma, Btherm):
