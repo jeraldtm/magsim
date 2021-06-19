@@ -261,8 +261,8 @@ def calc_ms(gamma, alpha, ys, Beff, I, ad, fl, sigma, Btherm, **kwargs):
 
 	return gamma/(1+alpha**2) * (-np.cross(ys, np.array(Heff) + np.array(Btherm)) - alpha\
 		* np.cross(ys, np.cross(ys, Heff))\
-		+ I*ad/mu_0*np.cross(ys, np.cross(ys, sigma))\
-		+ fl/mu_0*np.cross(ys, sigma))
+		+ I*ad*np.cross(ys, np.cross(ys, sigma))\
+		+ fl*np.cross(ys, sigma))
 
 def calc(n, Bext, Ku, Ms, ys, Jex, gamma, alpha, I, ad, fl, sigma, Btherm, **kwargs):
 	ms = np.zeros(3*n)
@@ -296,7 +296,7 @@ def calc_ms_numba(gamma, alpha, ys, Beff, I, ad, fl, sigma, Btherm):
 	Heff = Beff
     # return gamma/(1+alpha**2) * nbadd(-nbcross(ys, nbadd(Heff, Btherm, [0, 0, 0], [0, 0, 0])), -alpha/nbnorm(ys)\
     #                  * nbcross(ys, nbcross(ys, Beff)), I*ad/nbnorm(ys)*nbcross(ys, nbcross(ys, sigma)), fl*nbcross(ys, sigma))
-	return gamma/(1+alpha**2) * nbadd(-nbcross(ys, nbadd(Heff, Btherm, [0, 0, 0], [0, 0, 0])), -alpha * nbcross(ys, nbcross(ys, Heff)), I*ad/mu_0*nbcross(ys, nbcross(ys, sigma)), fl/mu_0*nbcross(ys, sigma))
+	return gamma/(1+alpha**2) * nbadd(-nbcross(ys, nbadd(Heff, Btherm, [0, 0, 0], [0, 0, 0])), -alpha * nbcross(ys, nbcross(ys, Heff)), I*ad*nbcross(ys, nbcross(ys, sigma)), fl*nbcross(ys, sigma))
 
 @numba.njit
 def calc_numba(n, Bext, Ku, Ms, ys, Jex, gamma, alpha, I, ad, fl, sigma, Btherm):
