@@ -30,7 +30,7 @@ class RKSolver():
         self.vars.append([y_n.tolist(), ydot_n, t_n])
 
 class RK45Solver():
-	def __init__(self, f, y0, ydot0 = 0., t0 = 0., h=1, hlim = [0.1, 2.], eps = 0.1, **kwargs):
+	def __init__(self, f, y0, ydot0 = 0., t0 = 0., h=1, hlim = [1e-14, 1e-10], eps = 0.35, **kwargs):
 	    self.vars = [[y0, ydot0, t0, h, 0]]
 	    self.f = f
 	    self.h = h
@@ -45,7 +45,7 @@ class RK45Solver():
 		e = [1/2., [-8/27., 2., -3544/2565., 1859/4104., -11/40.]]
 		f = [16/135., 0., 6656/12825., 28561/56430., -9/50., 2/55.]
 		g = [25/216., 0., 1408/2565., 2197/4104., -1/5., 0.]
-		y, ydot, t , h, diffs= self.vars[-1]
+		y, ydot, t , h, diffs = self.vars[-1]
 
 		k1 = self.f(y = y, ydot = ydot, t = t, **kwargs)
 		t1 = t + a[0]*h
@@ -82,6 +82,7 @@ class RK45Solver():
 			hnew = self.h* (self.eps/(2*diff)**(0.25))
 		elif diff == 0:
 			hnew = self.hlim[1]
-		if (hnew <= self.hlim[1]) and (hnew >= self.hlim[0]):
-			self.h = hnew
+		if (hnew <= self.hlim[1]):
+			if (hnew >= self.hlim[0]):
+				self.h = hnew
 		self.vars.append([y_n, ydot_n, t_n, self.h, diff])
